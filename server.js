@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Simulated VPN state
 const vpn_state = {
     status: "Disconnected",
     currentCountry: null,
@@ -13,9 +14,10 @@ const vpn_state = {
     lastUpdated: "Never",
     logs: [],
     version: "1.4.3-stable",
-    build: "2026.11.01-prod"
+    build: "2026.11.02-prod"
 };
 
+// Country data
 const COUNTRIES = [
     { code: "MD", name: "Moldova", region: "Europe", flag: "🇲🇩", latency: "12ms" },
     { code: "RO", name: "Romania", region: "Europe", flag: "🇷🇴", latency: "24ms" },
@@ -34,36 +36,27 @@ function getTimestamp() {
 }
 
 function addLog(message) {
-    vpn_state.logs.unshift(
-        `[${getTimestamp()}] ${message}`
-    );
-
-    if (vpn_state.logs.length > 50) {
-        vpn_state.logs.pop();
-    }
+    vpn_state.logs.unshift(`[${getTimestamp()}] ${message}`);
+    vpn_state.logs = vpn_state.logs.slice(0, 50);
 }
 
 function generateRandomIp() {
     return `10.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 254) + 1}`;
 }
 
-function parseDelay(value, defaultValue = 0) {
-    if (value === undefined || value === null || value === "") {
-        return defaultValue;
-    }
+function parseDelay(value, fallback = 0) {
+    if (value === undefined || value === "") return fallback;
 
     const number = Number(value);
 
-    if (!Number.isFinite(number) || number < 0) {
-        return null;
-    }
+    if (!Number.isFinite(number) || number < 0) return null;
 
     return Math.min(Math.floor(number), 10000);
 }
 
-addLog("[SYSTEM] Server initialized.");
+addLog("SYSTEM: VPN simulator started.");
 
-// HEALTH
+// Health
 app.get("/api/health", (req, res) => {
     res.json({
         success: true,
@@ -73,161 +66,143 @@ app.get("/api/health", (req, res) => {
     });
 });
 
-// STATUS
+// Current status
 app.get("/api/status", (req, res) => {
     res.json(vpn_state);
 });
 
-// COUNTRIES
+// Countries
 app.get("/api/countries", (req, res) => {
     res.json(COUNTRIES);
 });
 
-// CONNECT
+// Connect simulator
 app.post("/api/connect", async (req, res) => {
-    try {
-        const countryCode = String(req.body?.countryCode || "")
-            .trim()
-            .toUpperCase();
+    const countryCode = String(req.body.countryCode || "MD").toUpperCase();
+    const country = COUNTRIES.find(item => item.code === countryCode);
 
-        const country = COUNTRIES.find(
-            item => item.code === countryCode
-        );
-
-        if (!country) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid countryCode",
-                supportedCountryCodes: COUNTRIES.map(c => c.code)
-            });
-        }
-
-        const delay = parseDelay(req.body?.delay);
-
-        if (delay === null) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid delay"
-            });
-        }
-
-        await new Promise(resolve => setTimeout(resolve, delay));
-
-        vpn_state.status = "Connected";
-        vpn_state.currentCountry = country;
-        vpn_state.ip = generateRandomIp();
-        vpn_state.lastUpdated = getTimestamp();
-
-        addLog(`[CONNECT] ${country.name} selected.`);
-
-        return res.json({
-            success: true,
-            message: "Connection simulated successfully",
-            state: vpn_state
-        });
-
-    } catch (error) {
-        console.error("CONNECT ERROR:", error);
-
-        return res.status(500).json({
+    if (!country) {
+        return res.status(400).json({
             success: false,
-            error: "Connection failed"
+            error: "Invalid country code"
         });
     }
+
+    const delay = parseDelay(req.body.delay, 0);
+
+    if (delay === null) {
+        return res.status(400).json({
+            success: false,
+            error: "Invalid delay"
+        });
+    }
+
+    await new Promise(resolve => setTimeout(resolve, delay));
+
+    vpn_state.status = "Connected";
+    vpn_state.currentCountry = country;
+    vpn_state.ip = generateRandomIp();
+    vpn_state.lastUpdated = getTimestamp();
+
+    addLog(`CONNECT SIMULATION: ${country.name}, virtual IP ${vpn_state.ip}`);
+
+    res.json({
+        success: true,
+        message: "Connection simulated successfully",
+        state: vpn_state,
+        simulator: true
+    });
 });
 
-// DISCONNECT
+// Disconnect simulator
 app.post("/api/disconnect", async (req, res) => {
-    try {
-        const delay = parseDelay(req.body?.delay);
+    const delay = parseDelay(req.body.delay, 0);
 
-        if (delay === null) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid delay"
-            });
-        }
-
-        await new Promise(resolve => setTimeout(resolve, delay));
-
-        vpn_state.status = "Disconnected";
-        vpn_state.currentCountry = null;
-        vpn_state.ip = "Not assigned";
-        vpn_state.lastUpdated = getTimestamp();
-
-        addLog("[DISCONNECT] Tunnel closed.");
-
-        return res.json({
-            success: true,
-            message: "Disconnected successfully",
-            delay: delay,
-            state: vpn_state
-        });
-
-    } catch (error) {
-        console.error("DISCONNECT ERROR:", error);
-
-        return res.status(500).json({
+    if (delay === null) {
+        return res.status(400).json({
             success: false,
-            error: "Disconnect failed"
+            error: "Invalid delay"
         });
     }
+
+    await new Promise(resolve => setTimeout(resolve, delay));
+
+    vpn_state.status = "Disconnected";
+    vpn_state.currentCountry = null;
+    vpn_state.ip = "Not assigned";
+    vpn_state.lastUpdated = getTimestamp();
+
+    addLog("DISCONNECT SIMULATION: Disconnected.");
+
+    res.json({
+        success: true,
+        message: "Disconnected successfully",
+        state: vpn_state,
+        simulator: true
+    });
 });
 
-// ADDRESS POOL
+// Generate virtual IP pool
 app.get("/api/pool", (req, res) => {
-    const count = Math.min(
-        Math.max(parseInt(req.query.count, 10) || 3, 1),
-        10
+    const requested = Number.parseInt(req.query.count || "3", 10);
+    const count = Number.isFinite(requested)
+        ? Math.min(Math.max(requested, 1), 10)
+        : 3;
+
+    const addresses = Array.from(
+        { length: count },
+        () => generateRandomIp()
     );
 
     res.json({
         success: true,
-        addresses: Array.from(
-            { length: count },
-            generateRandomIp
-        )
+        count,
+        addresses,
+        simulator: true
     });
 });
 
-// SLEEP TEST
+// Sleep test
 app.all("/api/vpn/test/sleep", async (req, res) => {
-    try {
-        const delay = parseDelay(
-            req.query.ms ?? req.body?.ms,
-            1000
-        );
+    const rawDelay =
+        req.query.delay ??
+        req.query.ms ??
+        req.body?.delay ??
+        req.body?.ms;
 
-        if (delay === null) {
-            return res.status(400).json({
-                success: false,
-                error: "Invalid delay"
-            });
-        }
+    const delay = parseDelay(rawDelay, 1000);
 
-        const start = Date.now();
-
-        await new Promise(resolve => setTimeout(resolve, delay));
-
-        res.json({
-            success: true,
-            status: "completed",
-            requestedDelayMs: delay,
-            elapsedMs: Date.now() - start
+    if (delay === null) {
+        return res.status(400).json({
+            success: false,
+            error: "Invalid delay"
         });
-
-    } catch (error) {
-        console.error("SLEEP ERROR:", error);
-        res.status(500).json({ success: false });
     }
+
+    const start = Date.now();
+
+    await new Promise(resolve => setTimeout(resolve, delay));
+
+    const elapsed = Date.now() - start;
+
+    addLog(`SLEEP TEST: ${delay}ms requested, ${elapsed}ms elapsed.`);
+
+    res.json({
+        success: true,
+        status: "completed",
+        method: req.method,
+        requestedDelayMs: delay,
+        elapsedMs: elapsed,
+        timestamp: getTimestamp()
+    });
 });
 
-// LOGS
+// Logs
 app.get("/api/logs", (req, res) => {
-    const limit = Math.min(
-        Math.max(parseInt(req.query.limit, 10) || 20, 1),
-        50
-    );
+    const requested = Number.parseInt(req.query.limit || "20", 10);
+    const limit = Number.isFinite(requested)
+        ? Math.min(Math.max(requested, 1), 50)
+        : 20;
 
     res.json({
         count: vpn_state.logs.length,
@@ -235,17 +210,17 @@ app.get("/api/logs", (req, res) => {
     });
 });
 
-// VERSION
+// Version
 app.get("/api/version", (req, res) => {
     res.json({
         version: vpn_state.version,
         build: vpn_state.build,
-        framework: "Express Node.js",
+        framework: "Express / Node.js",
         deploymentReady: true
     });
 });
 
-// IP INFORMATION
+// Virtual IP information
 app.get("/api/vpn/ip", (req, res) => {
     res.json({
         ip: vpn_state.ip,
@@ -253,270 +228,337 @@ app.get("/api/vpn/ip", (req, res) => {
         country: vpn_state.currentCountry?.name || null,
         countryCode: vpn_state.currentCountry?.code || null,
         isProtected: false,
-        simulator: true
+        simulator: true,
+        lastAssigned: vpn_state.lastUpdated
     });
 });
 
-// API INFORMATION
+// API information
 app.get("/api/info", (req, res) => {
     res.json({
         appName: "VPN Command Instrument",
         version: vpn_state.version,
-        endpoints: [
+        deploymentTarget: "Node.js Express",
+        simulator: true,
+        activeCountries: COUNTRIES.length,
+        availableEndpoints: [
             "GET /api/health",
             "GET /api/status",
             "GET /api/countries",
             "POST /api/connect",
             "POST /api/disconnect",
-            "GET /api/pool",
-            "GET /api/logs",
+            "GET /api/pool?count=3",
+            "GET /api/vpn/test/sleep?delay=5000",
+            "GET /api/logs?limit=20",
             "GET /api/version",
             "GET /api/vpn/ip",
-            "GET /api/info"
+            "GET /api/info",
+            "GET /.well-known/vpn-discovery.json"
         ]
     });
 });
 
-// DASHBOARD
+// Well-Known VPN Discovery
+app.get("/.well-known/vpn-discovery.json", (req, res) => {
+    res.set("Cache-Control", "public, max-age=300");
+
+    res.json({
+        service: "VPN Command Instrument",
+        discoveryVersion: "1.0",
+        status: "available",
+        simulator: true,
+
+        provider: {
+            name: "VPN Command Instrument",
+            protocol: "HTTP REST API"
+        },
+
+        endpoints: {
+            discovery: "/.well-known/vpn-discovery.json",
+            health: "/api/health",
+            status: "/api/status",
+            countries: "/api/countries",
+            connect: "/api/connect",
+            disconnect: "/api/disconnect",
+            ip: "/api/vpn/ip",
+            pool: "/api/pool",
+            logs: "/api/logs",
+            version: "/api/version",
+            info: "/api/info"
+        },
+
+        capabilities: {
+            countrySelection: true,
+            connectionSimulation: true,
+            virtualIpGeneration: true,
+            realVpnTunnel: false,
+            trafficEncryption: false
+        },
+
+        timestamp: getTimestamp()
+    });
+});
+
+// Interactive dashboard with Google Fonts
 app.get("/", (req, res) => {
-    res.send(`
-<!DOCTYPE html>
+    res.type("html").send(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>VPN Command Instrument</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
 <style>
+* {
+    box-sizing: border-box;
+}
+
 body {
     margin: 0;
     padding: 20px;
-    background: #09090b;
-    color: #f4f4f5;
-    font-family: Arial, sans-serif;
-    max-width: 1100px;
+    background: #101827;
+    color: #eef2ff;
+    font-family: 'Roboto', sans-serif;
+}
+
+button, input, select, textarea {
+    font-family: 'Roboto', sans-serif;
+}
+
+main {
+    max-width: 850px;
     margin: auto;
 }
-.card {
-    background: #18181b;
-    border: 1px solid #333;
+
+.panel {
+    background: #1d293b;
+    border: 1px solid #34445c;
     border-radius: 12px;
     padding: 18px;
     margin: 15px 0;
 }
-.grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
+
+h1 {
+    color: #60a5fa;
+    font-weight: 700;
 }
+
+h2 {
+    font-weight: 500;
+}
+
+button, select, input {
+    padding: 11px;
+    border-radius: 7px;
+    border: 1px solid #52647d;
+    margin: 5px;
+}
+
 button {
-    padding: 12px;
     background: #2563eb;
     color: white;
-    border: 0;
-    border-radius: 7px;
-    margin: 4px;
-}
-.danger { background: #dc2626; }
-.country {
-    padding: 12px;
-    background: #27272a;
-    border: 1px solid #444;
-    margin: 5px;
-    border-radius: 8px;
     cursor: pointer;
+    font-weight: 500;
 }
-.country.selected {
-    border-color: #3b82f6;
+
+button.disconnect {
+    background: #dc2626;
 }
-.logs {
-    background: black;
-    padding: 12px;
-    overflow: auto;
-    max-height: 200px;
+
+pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #86efac;
 }
-@media(max-width:700px) {
-    .grid { grid-template-columns: 1fr; }
+
+.small {
+    color: #aab8ce;
 }
 </style>
 </head>
 <body>
-
+<main>
 <h1>🌐 VPN Command Instrument</h1>
-<p>Node.js Express VPN simulator dashboard</p>
+<p class="small">Node.js Express VPN simulator dashboard</p>
 
-<div class="grid">
-<div>
-<div class="card">
-<h3>Server Locations</h3>
-<div id="countries"></div>
-</div>
-
-<div class="card">
-<h3>Connection Delay</h3>
-<input id="delay" type="range"
-min="0" max="3000" step="250" value="750">
-<span id="delayValue">750 ms</span>
+<div class="panel">
+<h2>Connection control</h2>
+<select id="country"></select>
 <br>
-<button id="connectBtn" onclick="connect()">Connect</button>
-<button class="danger" onclick="disconnect()">Disconnect</button>
+<label>Delay (ms)</label>
+<input id="delay" type="number" min="0" max="10000" value="750">
+<br>
+<button onclick="connect()">Connect</button>
+<button class="disconnect" onclick="disconnect()">Disconnect</button>
 </div>
 
-<div class="card">
-<h3>Address Pool</h3>
+<div class="panel">
+<h2>Live state</h2>
+<pre id="state">Loading...</pre>
+<button onclick="refresh()">Refresh status</button>
+</div>
+
+<div class="panel">
+<h2>Virtual IP pool</h2>
+<input id="poolCount" type="number" min="1" max="10" value="3">
 <button onclick="pool()">Generate IPs</button>
 <pre id="poolResult"></pre>
 </div>
+
+<div class="panel">
+<h2>Sleep test</h2>
+<input id="sleepDelay" type="number" min="0" max="10000" value="1000">
+<button onclick="sleepTest()">Run test</button>
+<pre id="sleepResult"></pre>
 </div>
 
-<div>
-<div class="card">
-<h3>Live Status</h3>
-<p>Status: <strong id="status">Loading</strong></p>
-<p>Country: <strong id="country">None</strong></p>
-<p>IP: <strong id="ip">Not assigned</strong></p>
-<p>Last updated: <strong id="updated">Never</strong></p>
+<div class="panel">
+<h2>Diagnostic logs</h2>
+<button onclick="loadLogs()">Refresh logs</button>
+<pre id="logs"></pre>
 </div>
 
-<div class="card">
-<h3>Diagnostic Logs</h3>
-<button onclick="logs()">Refresh</button>
-<pre class="logs" id="logs"></pre>
+<div class="panel">
+<h2>API information</h2>
+<button onclick="apiInfo()">View API info</button>
+<pre id="info"></pre>
 </div>
-
-<div class="card">
-<h3>API Inspector</h3>
-<button onclick="inspect('/api/health')">Health</button>
-<button onclick="inspect('/api/version')">Version</button>
-<button onclick="inspect('/api/info')">Info</button>
-<pre id="result"></pre>
-</div>
-</div>
-</div>
+</main>
 
 <script>
-let selected = "MD";
-
-const delayInput = document.getElementById("delay");
-
-delayInput.oninput = () => {
-    document.getElementById("delayValue").textContent =
-        delayInput.value + " ms";
-};
-
 async function api(url, options = {}) {
     const response = await fetch(url, options);
     const data = await response.json();
 
     if (!response.ok) {
-        throw new Error(data.error || data.message || "Request failed");
+        throw new Error(data.error || "Request failed");
     }
 
     return data;
 }
 
-async function init() {
-    const countries = await api("/api/countries");
-
-    document.getElementById("countries").innerHTML =
-        countries.map(c => \`
-            <div class="country \${c.code === selected ? "selected" : ""}"
-                 onclick="choose('\${c.code}', this)">
-                \${c.flag} \${c.name} — \${c.latency}
-            </div>
-        \`).join("");
-
-    await refresh();
+function show(id, data) {
+    document.getElementById(id).textContent =
+        typeof data === "string" ? data : JSON.stringify(data, null, 2);
 }
 
-function choose(code, element) {
-    selected = code;
-
-    document.querySelectorAll(".country").forEach(
-        item => item.classList.remove("selected")
-    );
-
-    element.classList.add("selected");
+async function refresh() {
+    try {
+        show("state", await api("/api/status"));
+    } catch (error) {
+        show("state", error.message);
+    }
 }
 
 async function connect() {
     try {
-        const data = await api("/api/connect", {
+        const result = await api("/api/connect", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                countryCode: selected,
-                delay: Number(delayInput.value)
+                countryCode: document.getElementById("country").value,
+                delay: document.getElementById("delay").value
             })
         });
-
-        showState(data.state);
+        show("state", result);
+        loadLogs();
     } catch (error) {
-        alert(error.message);
+        show("state", error.message);
     }
 }
 
 async function disconnect() {
     try {
-        const data = await api("/api/disconnect", {
+        const result = await api("/api/disconnect", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                delay: Number(delayInput.value)
+                delay: document.getElementById("delay").value
             })
         });
-
-        showState(data.state);
+        show("state", result);
+        loadLogs();
     } catch (error) {
-        alert(error.message);
+        show("state", error.message);
     }
-}
-
-function showState(state) {
-    document.getElementById("status").textContent = state.status;
-    document.getElementById("country").textContent =
-        state.currentCountry?.name || "None";
-    document.getElementById("ip").textContent = state.ip;
-    document.getElementById("updated").textContent = state.lastUpdated;
-
-    if (state.logs) {
-        document.getElementById("logs").textContent =
-            state.logs.join("\\n");
-    }
-}
-
-async function refresh() {
-    showState(await api("/api/status"));
-}
-
-async function logs() {
-    const data = await api("/api/logs");
-    document.getElementById("logs").textContent =
-        data.logs.join("\\n");
 }
 
 async function pool() {
-    const data = await api("/api/pool?count=5");
-    document.getElementById("poolResult").textContent =
-        data.addresses.join("\\n");
+    try {
+        const count = document.getElementById("poolCount").value;
+        show("poolResult", await api("/api/pool?count=" + encodeURIComponent(count)));
+    } catch (error) {
+        show("poolResult", error.message);
+    }
 }
 
-async function inspect(endpoint) {
-    const data = await api(endpoint);
-    document.getElementById("result").textContent =
-        JSON.stringify(data, null, 2);
+async function sleepTest() {
+    try {
+        const delay = document.getElementById("sleepDelay").value;
+        show("sleepResult", await api("/api/vpn/test/sleep?delay=" + encodeURIComponent(delay)));
+        loadLogs();
+    } catch (error) {
+        show("sleepResult", error.message);
+    }
 }
 
-window.onload = init;
+async function loadLogs() {
+    try {
+        const result = await api("/api/logs");
+        show("logs", result.logs.join("\\n"));
+    } catch (error) {
+        show("logs", error.message);
+    }
+}
+
+async function apiInfo() {
+    try {
+        show("info", await api("/api/info"));
+    } catch (error) {
+        show("info", error.message);
+    }
+}
+
+async function loadCountries() {
+    try {
+        const countries = await api("/api/countries");
+        const select = document.getElementById("country");
+
+        countries.forEach(country => {
+            const option = document.createElement("option");
+            option.value = country.code;
+            option.textContent = country.flag + " " + country.name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        show("state", error.message);
+    }
+}
+
+loadCountries();
+refresh();
+loadLogs();
 </script>
 </body>
-</html>
-    `);
+</html>`);
 });
 
-// ERROR HANDLER
-app.use((error, req, res, next) => {
-    console.error("SERVER ERROR:", error);
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        error: "Endpoint not found",
+        path: req.path
+    });
+});
 
+// Error handler
+app.use((err, req, res, next) => {
+    console.error(err);
     res.status(500).json({
         success: false,
         error: "Internal server error"
@@ -524,5 +566,5 @@ app.use((error, req, res, next) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-    console.log("VPN Command Instrument running on port " + PORT);
+    console.log(`VPN simulator running on port ${PORT}`);
 });
